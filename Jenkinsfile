@@ -190,10 +190,9 @@ pipeline {
                         passwordVariable: 'PASS'
                 )]) {
 
-                    sh '''
-    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-    docker push mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER}
-    '''
+               sh """
+               docker build -t mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER} .
+               """
 
                 }
 
