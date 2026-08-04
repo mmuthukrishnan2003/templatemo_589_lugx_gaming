@@ -1,98 +1,111 @@
 pipeline {
 
-    /*****************************************************
+    /***************************************************************
      * AGENT
-     * Runs the pipeline on any available Jenkins agent.
-     *****************************************************/
+     * Run this pipeline on any available Jenkins agent.
+     ***************************************************************/
     agent any
 
-    /*****************************************************
+    /***************************************************************
+     * OPTIONS
+     ***************************************************************/
+    options {
+
+        // Prevent Jenkins from checking out the repository twice
+        skipDefaultCheckout(true)
+
+    }
+
+    /***************************************************************
      * PARAMETERS
-     * Displayed in "Build with Parameters".
-     *****************************************************/
+     ***************************************************************/
     parameters {
 
-        // Select the Git branch to build
         choice(
             name: 'BRANCH',
             choices: ['main', 'dev', 'preprod'],
-            description: 'Git Branch'
+            description: 'Select Git Branch'
         )
 
-        // Select the deployment target server
         choice(
             name: 'DEPLOY_SERVER',
             choices: ['SERVER1', 'SERVER2'],
-            description: 'Deployment Server'
+            description: 'Select Deployment Server'
         )
+
     }
 
-    /*****************************************************
+    /***************************************************************
      * ENVIRONMENT VARIABLES
-     * Global variables used throughout the pipeline.
-     *****************************************************/
+     ***************************************************************/
     environment {
 
-        // Docker container name
+        // Application Name
         APP_NAME = "templatemo_589_lugx_gaming"
 
-        // Docker Hub repository
+        // Docker Hub Repository
         IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
-        // Docker image with Jenkins build number
+        // Docker Image
         IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
-        // GitHub repository URL
+        // Git Repository
         GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
-        // Docker Hub credentials ID in Jenkins
+        // Jenkins Credential IDs
         DOCKER_CREDENTIALS = "dockerhub-credentials"
+        SSH_CREDENTIALS    = "deployment-ssh"
 
-        // SSH credentials ID for deployment server
-        SSH_CREDENTIALS = "deployment-ssh"
     }
 
-    /*****************************************************
+    /***************************************************************
      * PIPELINE STAGES
-     *****************************************************/
+     ***************************************************************/
     stages {
 
-        /*************************************************
-         * STAGE: Checkout
-         * Clone the selected branch from GitHub.
-         *************************************************/
+        /*******************************************************
+         * CHECKOUT
+         *******************************************************/
         stage('Checkout') {
 
             steps {
 
-                git branch: params.BRANCH,
+                echo "Cloning Repository..."
+
+                git(
+                    branch: params.BRANCH,
                     url: env.GIT_URL
+                )
 
             }
+
         }
 
-        /*************************************************
-         * STAGE: Docker Build
-         * Build the Docker image from the Dockerfile.
-         *************************************************/
+        /*******************************************************
+         * BUILD DOCKER IMAGE
+         *******************************************************/
         stage('Docker Build') {
 
             steps {
+
+                echo "Building Docker Image..."
 
                 sh """
                     docker build -t ${IMAGE} .
                 """
 
             }
+
         }
 
-        /*************************************************
-         * STAGE: Docker Login & Push
-         * Login to Docker Hub and push the image.
-         *************************************************/
+        /*******************************************************
+         * LOGIN & PUSH IMAGE
+         *******************************************************/
         stage('Docker Login & Push') {
 
             steps {
+
+                echo "Logging into Docker Hub..."
 
                 withCredentials([
                     usernamePassword(
@@ -113,13 +126,12 @@ pipeline {
                 }
 
             }
+
         }
 
-        /*************************************************
-         * STAGE: Select Deployment Server
-         * Choose the destination server based on the
-         * selected parameter.
-         *************************************************/
+        /*******************************************************
+         * SELECT DEPLOYMENT SERVER
+         *******************************************************/
         stage('Select Deployment Server') {
 
             steps {
@@ -136,18 +148,17 @@ pipeline {
 
                     }
 
+                    echo "Deploying to ${env.SERVER_IP}"
+
                 }
 
             }
+
         }
 
-        /*************************************************
-         * STAGE: Deploy
-         * Connect to the target server using SSH,
-         * pull the latest Docker image,
-         * stop/remove the old container,
-         * and start the new container.
-         *************************************************/
+        /*******************************************************
+         * DEPLOY APPLICATION
+         *******************************************************/
         stage('Deploy') {
 
             steps {
@@ -155,7 +166,7 @@ pipeline {
                 sshagent(credentials: [env.SSH_CREDENTIALS]) {
 
                     sh """
-                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} << EOF
+                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} <<EOF
 
                     docker pull ${IMAGE}
 
@@ -165,7 +176,7 @@ pipeline {
 
                     docker run -d \\
                         --name ${APP_NAME} \\
-                        --restart always \\
+                        --restart unless-stopped \\
                         -p 80:80 \\
                         ${IMAGE}
 
@@ -175,56 +186,53 @@ pipeline {
                 }
 
             }
+
         }
 
-        /*************************************************
-         * STAGE: Health Check
-         * Wait for the application to start and
-         * verify that the website is reachable.
-         *************************************************/
+        /*******************************************************
+         * HEALTH CHECK
+         *******************************************************/
         stage('Health Check') {
 
             steps {
 
+                echo "Checking Application..."
+
                 sh """
-                    sleep 10
+
+                    sleep 15
 
                     curl --fail http://${SERVER_IP}
+
                 """
 
             }
+
         }
 
     }
 
-    /*****************************************************
+    /***************************************************************
      * POST ACTIONS
-     * Actions executed after the pipeline finishes.
-     *****************************************************/
+     ***************************************************************/
     post {
 
-        /***********************************************
-         * Executed when the pipeline succeeds.
-         ***********************************************/
         success {
 
+            echo "========================================"
             echo "Deployment Successful"
+            echo "========================================"
 
         }
 
-        /***********************************************
-         * Executed when the pipeline fails.
-         ***********************************************/
         failure {
 
+            echo "========================================"
             echo "Deployment Failed"
+            echo "========================================"
 
         }
 
-        /***********************************************
-         * Always executed regardless of success/failure.
-         * Cleans the Jenkins workspace.
-         ***********************************************/
         always {
 
             cleanWs()
