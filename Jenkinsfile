@@ -2,7 +2,7 @@ pipeline {
 
     /***************************************************************
      * AGENT
-     * Run this pipeline on any available Jenkins agent.
+     * Run the pipeline on any available Jenkins agent.
      ***************************************************************/
     agent any
 
@@ -10,10 +10,9 @@ pipeline {
      * OPTIONS
      ***************************************************************/
     options {
-
-        // Prevent Jenkins from checking out the repository twice
         skipDefaultCheckout(true)
-
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     /***************************************************************
@@ -32,7 +31,6 @@ pipeline {
             choices: ['SERVER1', 'SERVER2'],
             description: 'Select Deployment Server'
         )
-
     }
 
     /***************************************************************
@@ -40,37 +38,32 @@ pipeline {
      ***************************************************************/
     environment {
 
-        // Application Name
         APP_NAME = "templatemo_589_lugx_gaming"
 
-        // Docker Hub Repository
         IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
-        // Docker Image
         IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
-        // Git Repository
         GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
-        // Jenkins Credential IDs
         DOCKER_CREDENTIALS = "dockerhub-credentials"
-        SSH_CREDENTIALS    = "deployment-ssh"
 
+        SSH_CREDENTIALS = "deployment-ssh"
     }
 
     /***************************************************************
-     * PIPELINE STAGES
+     * STAGES
      ***************************************************************/
     stages {
 
-        /*******************************************************
-         * CHECKOUT
-         *******************************************************/
+        /***********************************************************
+         * Checkout Source Code
+         ***********************************************************/
         stage('Checkout') {
 
             steps {
 
-                echo "Cloning Repository..."
+                echo "Cloning repository..."
 
                 git(
                     branch: params.BRANCH,
@@ -78,34 +71,31 @@ pipeline {
                 )
 
             }
-
         }
 
-        /*******************************************************
-         * BUILD DOCKER IMAGE
-         *******************************************************/
+        /***********************************************************
+         * Build Docker Image
+         ***********************************************************/
         stage('Docker Build') {
 
             steps {
 
-                echo "Building Docker Image..."
+                echo "Building Docker image..."
 
                 sh """
                     docker build -t ${IMAGE} .
+                    docker image inspect ${IMAGE}
                 """
 
             }
-
         }
 
-        /*******************************************************
-         * LOGIN & PUSH IMAGE
-         *******************************************************/
+        /***********************************************************
+         * Login to Docker Hub and Push Image
+         ***********************************************************/
         stage('Docker Login & Push') {
 
             steps {
-
-                echo "Logging into Docker Hub..."
 
                 withCredentials([
                     usernamePassword(
@@ -115,23 +105,24 @@ pipeline {
                     )
                 ]) {
 
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    sh """
+                        set -e
 
-                        docker push '"${IMAGE}"'
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+
+                        docker push ${IMAGE}
 
                         docker logout
-                    '''
+                    """
 
                 }
 
             }
-
         }
 
-        /*******************************************************
-         * SELECT DEPLOYMENT SERVER
-         *******************************************************/
+        /***********************************************************
+         * Select Deployment Server
+         ***********************************************************/
         stage('Select Deployment Server') {
 
             steps {
@@ -139,26 +130,20 @@ pipeline {
                 script {
 
                     if (params.DEPLOY_SERVER == "SERVER1") {
-
                         env.SERVER_IP = "172.16.0.111"
-
                     } else {
-
                         env.SERVER_IP = "172.16.0.112"
-
                     }
 
-                    echo "Deploying to ${env.SERVER_IP}"
-
+                    echo "Deploy Server : ${SERVER_IP}"
                 }
 
             }
-
         }
 
-        /*******************************************************
-         * DEPLOY APPLICATION
-         *******************************************************/
+        /***********************************************************
+         * Deploy Docker Container
+         ***********************************************************/
         stage('Deploy') {
 
             steps {
@@ -166,50 +151,44 @@ pipeline {
                 sshagent(credentials: [env.SSH_CREDENTIALS]) {
 
                     sh """
-                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} <<EOF
+                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
+                        set -e
 
-                    docker pull ${IMAGE}
+                        docker pull ${IMAGE}
 
-                    docker stop ${APP_NAME} || true
+                        docker stop ${APP_NAME} || true
 
-                    docker rm ${APP_NAME} || true
+                        docker rm ${APP_NAME} || true
 
-                    docker run -d \\
-                        --name ${APP_NAME} \\
-                        --restart unless-stopped \\
-                        -p 80:80 \\
-                        ${IMAGE}
+                        docker run -d \
+                            --name ${APP_NAME} \
+                            --restart unless-stopped \
+                            -p 80:80 \
+                            ${IMAGE}
 
-                    EOF
+                        docker image prune -f
+                    '
                     """
 
                 }
 
             }
-
         }
 
-        /*******************************************************
-         * HEALTH CHECK
-         *******************************************************/
+        /***********************************************************
+         * Verify Deployment
+         ***********************************************************/
         stage('Health Check') {
 
             steps {
 
-                echo "Checking Application..."
-
                 sh """
-
                     sleep 15
-
                     curl --fail http://${SERVER_IP}
-
                 """
 
             }
-
         }
-
     }
 
     /***************************************************************
@@ -219,17 +198,21 @@ pipeline {
 
         success {
 
-            echo "========================================"
+            echo "======================================="
             echo "Deployment Successful"
-            echo "========================================"
+            echo "Application : ${APP_NAME}"
+            echo "Image       : ${IMAGE}"
+            echo "Server      : ${SERVER_IP}"
+            echo "======================================="
 
         }
 
         failure {
 
-            echo "========================================"
+            echo "======================================="
             echo "Deployment Failed"
-            echo "========================================"
+            echo "Check Jenkins Console Output."
+            echo "======================================="
 
         }
 
@@ -238,7 +221,5 @@ pipeline {
             cleanWs()
 
         }
-
     }
-
 }
