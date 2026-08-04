@@ -1,85 +1,58 @@
 pipeline {
 
-
     /***************************************************************
      * AGENT
-     *
-     * Run pipeline on Jenkins available node
+     * Run pipeline on Jenkins node
      ***************************************************************/
     agent any
 
 
-
     /***************************************************************
-     * PIPELINE OPTIONS
+     * OPTIONS
      ***************************************************************/
     options {
 
-
-        // Disable automatic Jenkins SCM checkout
+        // Disable default Jenkins checkout
         skipDefaultCheckout(true)
 
-
-        // Add timestamps in console output
+        // Add timestamps in logs
         timestamps()
 
-
-        // Keep only last 10 build history
+        // Keep only last 10 builds
         buildDiscarder(
             logRotator(
                 numToKeepStr: '10'
             )
         )
-
     }
 
 
 
-
     /***************************************************************
-     * USER PARAMETERS
-     *
-     * Values selected from Jenkins Build with Parameters
+     * PARAMETERS
      ***************************************************************/
     parameters {
 
-
-        // Select Git branch
-
         choice(
-
             name: 'BRANCH',
-
             choices: [
                 'main',
                 'dev',
                 'preprod'
             ],
-
             description: 'Select Git Branch'
-
         )
 
 
-
-        // Select deployment target server
-
         choice(
-
             name: 'DEPLOY_SERVER',
-
             choices: [
                 'SERVER1',
                 'SERVER2'
             ],
-
             description: 'Select Deployment Server'
-
         )
-
     }
-
-
 
 
 
@@ -89,104 +62,61 @@ pipeline {
     environment {
 
 
-        // Application/container name
-
         APP_NAME = "templatemo_589_lugx_gaming"
 
 
-
-        // Docker Hub repository
-
-        IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
+        IMAGE_NAME =
+        "mk2526/templatemo_589_lugx_gaming"
 
 
+        IMAGE =
+        "${IMAGE_NAME}:${BUILD_NUMBER}"
 
-        // Docker image tag
-        // Example:
-        // mk2526/templatemo_589_lugx_gaming:15
-
-        IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
-
-
-
-        // Git repository URL
 
         GIT_URL =
         "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
 
-
-
-        // Jenkins credential IDs
-
         GIT_CREDENTIALS =
         "github-credentials"
-
 
 
         DOCKER_CREDENTIALS =
         "dockerhub-credentials"
 
 
-
         SSH_CREDENTIALS =
         "deployment-ssh"
 
 
-
-
-        // Application ports
-
         HOST_PORT = "80"
 
-        CONTAINER_PORT = "80"
 
+        CONTAINER_PORT = "80"
 
     }
 
 
 
-
-
-    /***************************************************************
-     * PIPELINE STAGES
-     ***************************************************************/
     stages {
 
 
-
         /***********************************************************
-         * STAGE 1
-         *
-         * Checkout source code from Git
+         * CHECKOUT CODE
          ***********************************************************/
         stage('Checkout') {
 
-
             steps {
 
-
-                echo "Checking out branch ${params.BRANCH}"
-
+                echo "Checkout Branch : ${params.BRANCH}"
 
 
                 git(
-
                     branch: params.BRANCH,
-
-
-                    // Remove this line if repository is public
-
                     credentialsId: env.GIT_CREDENTIALS,
-
-
                     url: env.GIT_URL
-
                 )
-
-
             }
-
         }
 
 
@@ -194,11 +124,7 @@ pipeline {
 
 
         /***********************************************************
-         * STAGE 2
-         *
-         * Build Docker Image
-         *
-         * Requires Dockerfile in repository
+         * BUILD DOCKER IMAGE
          ***********************************************************/
         stage('Docker Build') {
 
@@ -206,29 +132,17 @@ pipeline {
             steps {
 
 
-                echo "Building Docker Image ${IMAGE}"
-
-
-
                 sh """
 
+                echo "Building Docker Image"
 
-                docker build \\
+                docker build \
                 -t ${IMAGE} .
 
-
-
-                echo "Docker image created"
-
-
-
-                docker images | grep ${IMAGE_NAME}
-
+                docker images
 
                 """
-
             }
-
         }
 
 
@@ -237,9 +151,7 @@ pipeline {
 
 
         /***********************************************************
-         * STAGE 3
-         *
-         * Push Docker Image to Docker Hub
+         * PUSH IMAGE TO DOCKER HUB
          ***********************************************************/
         stage('Docker Push') {
 
@@ -247,55 +159,41 @@ pipeline {
             steps {
 
 
-
                 withCredentials([
-
 
                     usernamePassword(
 
                         credentialsId:
                         env.DOCKER_CREDENTIALS,
 
-
                         usernameVariable:
                         'DOCKER_USER',
 
-
                         passwordVariable:
                         'DOCKER_PASS'
-
                     )
-
 
                 ]) {
 
 
-
                     sh """
 
-
                     echo \$DOCKER_PASS |
-                    docker login \\
-                    -u \$DOCKER_USER \\
-                    --password-stdin
 
+                    docker login \
+                    -u \$DOCKER_USER \
+                    --password-stdin
 
 
                     docker push ${IMAGE}
 
 
-
                     docker logout
 
 
-
                     """
-
                 }
-
-
             }
-
         }
 
 
@@ -303,14 +201,11 @@ pipeline {
 
 
 
+
         /***********************************************************
-         * STAGE 4
-         *
-         * Select deployment server
-         *
-         * SERVER1 / SERVER2
+         * SELECT SERVER IP
          ***********************************************************/
-        stage('Select Deployment Server') {
+        stage('Server Selection') {
 
 
             steps {
@@ -340,16 +235,13 @@ pipeline {
 
                     echo """
 
-                    Selected Server:
+                    Deployment Server:
                     ${SERVER_IP}
 
                     """
 
                 }
-
-
             }
-
         }
 
 
@@ -359,44 +251,67 @@ pipeline {
 
 
         /***********************************************************
-         * STAGE 5
-         *
-         * Deploy Docker Container
-         *
-         * Actions:
-         *
-         * 1. SSH into server
-         * 2. Pull latest image
-         * 3. Stop old container
-         * 4. Remove old container
-         * 5. Start new container
+         * SSH CONNECTION TEST
          ***********************************************************/
-        stage('Deploy') {
-
+        stage('SSH Test') {
 
 
             steps {
 
 
-
                 sshagent([env.SSH_CREDENTIALS]) {
 
+
+                    sh """
+
+                    echo "Testing SSH"
+
+
+                    ssh \
+                    -o StrictHostKeyChecking=no \
+                    demo@${SERVER_IP} "
+
+                    whoami
+
+                    hostname
+
+                    docker ps
+
+                    "
+
+                    """
+                }
+            }
+        }
+
+
+
+
+
+
+
+        /***********************************************************
+         * DEPLOY APPLICATION
+         ***********************************************************/
+        stage('Deploy') {
+
+
+            steps {
+
+
+                sshagent([env.SSH_CREDENTIALS]) {
 
 
                     sh """
 
 
-                    ssh -o StrictHostKeyChecking=no \\
+                    ssh \
+                    -o StrictHostKeyChecking=no \
                     demo@${SERVER_IP} << EOF
 
 
 
-                    echo "Connected to Deployment Server"
-
-
-
-                    echo "Pulling Docker Image"
-
+                    echo "Pull Docker Image"
 
 
                     docker pull ${IMAGE}
@@ -404,17 +319,15 @@ pipeline {
 
 
 
-
-                    echo "Stopping Existing Container"
-
+                    echo "Stop Existing Container"
 
 
                     docker stop ${APP_NAME} || true
 
 
 
-                    echo "Removing Existing Container"
 
+                    echo "Remove Existing Container"
 
 
                     docker rm ${APP_NAME} || true
@@ -423,8 +336,7 @@ pipeline {
 
 
 
-
-                    echo "Starting New Container"
+                    echo "Start New Container"
 
 
 
@@ -441,19 +353,7 @@ pipeline {
 
 
 
-
-
-                    echo "Cleaning Old Docker Images"
-
-
-
-                    docker image prune -f
-
-
-
-
-
-                    echo "Current Running Containers"
+                    echo "Deployment Completed"
 
 
 
@@ -461,22 +361,13 @@ pipeline {
 
 
 
-
 EOF
 
 
-
                     """
-
-
                 }
-
-
             }
-
-
         }
-
 
 
 
@@ -485,9 +376,7 @@ EOF
 
 
         /***********************************************************
-         * STAGE 6
-         *
-         * Application Health Check
+         * HEALTH CHECK
          ***********************************************************/
         stage('Health Check') {
 
@@ -495,37 +384,28 @@ EOF
             steps {
 
 
-
                 sh """
 
 
-                echo "Waiting for application startup"
-
+                echo "Waiting Application Start"
 
 
                 sleep 15
 
 
 
-
-                curl --fail \\
-                http://${SERVER_IP}
-
+                curl --fail \
+                http://${SERVER_IP}:80
 
 
 
-
-                echo "Application is Running Successfully"
+                echo "Application Running Successfully"
 
 
 
                 """
-
-
             }
-
         }
-
 
 
     }
@@ -537,47 +417,37 @@ EOF
 
 
     /***************************************************************
-     * POST BUILD ACTIONS
+     * POST ACTIONS
      ***************************************************************/
     post {
-
 
 
         success {
 
 
-
             echo """
 
+            ==================================
 
-            ======================================
-
-            Deployment Successful
-
+            Deployment SUCCESS
 
             Application:
             ${APP_NAME}
 
-
             Image:
             ${IMAGE}
 
-
             Branch:
             ${BRANCH}
-
 
             Server:
             ${SERVER_IP}
 
 
-            ======================================
-
+            ==================================
 
             """
-
         }
-
 
 
 
@@ -585,25 +455,18 @@ EOF
         failure {
 
 
-
             echo """
 
+            ==================================
 
-            ======================================
+            Deployment FAILED
 
-            Deployment Failed
+            Check Jenkins Console
 
-
-            Check Jenkins Console Logs
-
-
-            ======================================
-
+            ==================================
 
             """
-
         }
-
 
 
 
@@ -611,15 +474,10 @@ EOF
         always {
 
 
-            // Remove workspace files
-
             cleanWs()
 
         }
 
-
-
     }
-
 
 }
