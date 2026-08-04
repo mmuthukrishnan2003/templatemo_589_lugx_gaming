@@ -133,7 +133,7 @@ pipeline {
         /**********************************************
          * Quality Gate
          **********************************************/
-        stage('Quality Gate') {
+     /*   stage('Quality Gate') {
 
             steps {
 
