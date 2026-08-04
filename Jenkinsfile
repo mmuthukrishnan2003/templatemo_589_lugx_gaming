@@ -39,7 +39,7 @@ pipeline {
 
         REGISTRY = "harbor.company.com"
 
-        GIT_URL = "https://gitlab.company.com/project/bingo.git"
+        GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
         GIT_CREDENTIALS = "gitlab-credentials"
 
