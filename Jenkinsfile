@@ -1,242 +1,161 @@
 pipeline {
 
+    /*****************************************************
+     * AGENT
+     * Runs the pipeline on any available Jenkins agent.
+     *****************************************************/
     agent any
 
     /*****************************************************
-     * TOOLS
-     *****************************************************/
-
-    /*****************************************************
      * PARAMETERS
+     * Displayed in "Build with Parameters".
      *****************************************************/
     parameters {
 
+        // Select the Git branch to build
         choice(
             name: 'BRANCH',
-            choices: ['dev', 'main', 'preprod'],
-            description: 'Select Git Branch'
+            choices: ['main', 'dev', 'preprod'],
+            description: 'Git Branch'
         )
 
+        // Select the deployment target server
         choice(
             name: 'DEPLOY_SERVER',
-            choices: [
-                'SERVER1',
-                'SERVER2'
-            ],
+            choices: ['SERVER1', 'SERVER2'],
             description: 'Deployment Server'
         )
-
     }
 
     /*****************************************************
-     * ENVIRONMENT
+     * ENVIRONMENT VARIABLES
+     * Global variables used throughout the pipeline.
      *****************************************************/
     environment {
 
-        APP_NAME = "bingo"
+        // Docker container name
+        APP_NAME = "templatemo_589_lugx_gaming"
 
-        IMAGE = "docker build -t mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER} ."
+        // Docker Hub repository
+        IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
-        REGISTRY = "harbor.company.com"
+        // Docker image with Jenkins build number
+        IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
+        // GitHub repository URL
         GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
-        GIT_CREDENTIALS = "gitlab-credentials"
+        // Docker Hub credentials ID in Jenkins
+        DOCKER_CREDENTIALS = "dockerhub-credentials"
 
-        SONAR = "SonarQube"
-
+        // SSH credentials ID for deployment server
         SSH_CREDENTIALS = "deployment-ssh"
-
-        REGISTRY_CREDENTIALS = "harbor-credentials"
-
     }
 
     /*****************************************************
-     * STAGES
+     * PIPELINE STAGES
      *****************************************************/
-
     stages {
 
-        /**********************************************
-         * Checkout
-         **********************************************/
+        /*************************************************
+         * STAGE: Checkout
+         * Clone the selected branch from GitHub.
+         *************************************************/
         stage('Checkout') {
 
             steps {
 
                 git branch: params.BRANCH,
-                    credentialsId: env.GIT_CREDENTIALS,
                     url: env.GIT_URL
 
             }
         }
 
-        /**********************************************
-         * Install
-         **********************************************/
-       /* stage('Install Dependencies') {
-
-            steps {
-                sh 'npm install'
-            }
-
-        }
-
-        /**********************************************
-         * Build
-         **********************************************/
-      /*  stage('Build') {
-
-            steps {
-
-                sh 'npm run build'
-
-            }
-
-        }
-
-        /**********************************************
-         * Test
-         **********************************************/
-      /*  stage('Test') {
-
-            steps {
-
-                sh 'npm test -- --watch=false'
-
-            }
-
-        }
-
-        /**********************************************
-         * SonarQube
-         **********************************************/
-       /* stage('SonarQube Analysis') {
-
-            steps {
-
-                withSonarQubeEnv("${SONAR}") {
-
-                    sh """
-                    sonar-scanner \
-                    -Dsonar.projectKey=bingo \
-                    -Dsonar.projectName=BINGO \
-                    -Dsonar.sources=. \
-                    """
-
-                }
-
-            }
-
-        }
-
-        /**********************************************
-         * Quality Gate
-         **********************************************/
-     /*   stage('Quality Gate') {
-
-            steps {
-
-                timeout(time: 10, unit: 'MINUTES') {
-
-                    waitForQualityGate abortPipeline: true
-
-                }
-
-            }
-
-        }
-
-        /**********************************************
-         * Trivy Scan
-         **********************************************/
-      /*  stage('Security Scan') {
-
-            steps {
-
-                sh '''
-                trivy fs . --exit-code 0
-                '''
-
-            }
-
-        }
-
-        /**********************************************
-         * Docker Build
-         **********************************************/
+        /*************************************************
+         * STAGE: Docker Build
+         * Build the Docker image from the Dockerfile.
+         *************************************************/
         stage('Docker Build') {
 
             steps {
 
                 sh """
-                docker build -t ${IMAGE} .
+                    docker build -t ${IMAGE} .
                 """
 
             }
-
         }
 
-        /**********************************************
-         * Docker Push
-         **********************************************/
-        stage('Docker Push') {
+        /*************************************************
+         * STAGE: Docker Login & Push
+         * Login to Docker Hub and push the image.
+         *************************************************/
+        stage('Docker Login & Push') {
 
             steps {
 
-                withCredentials([usernamePassword(
-                        credentialsId: REGISTRY_CREDENTIALS,
-                        usernameVariable: 'USER',
-                        passwordVariable: 'PASS'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: env.DOCKER_CREDENTIALS,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
 
-               sh """
-               docker build -t mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER} .
-               """
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        docker push '"${IMAGE}"'
+
+                        docker logout
+                    '''
 
                 }
 
             }
-
         }
 
-        /**********************************************
-         * Select Server
-         **********************************************/
+        /*************************************************
+         * STAGE: Select Deployment Server
+         * Choose the destination server based on the
+         * selected parameter.
+         *************************************************/
         stage('Select Deployment Server') {
 
             steps {
 
                 script {
 
-                    if(params.DEPLOY_SERVER == "SERVER1"){
+                    if (params.DEPLOY_SERVER == "SERVER1") {
 
-                        env.SERVER_IP="172.16.0.111"
+                        env.SERVER_IP = "172.16.0.111"
 
-                    }else{
+                    } else {
 
-                        env.SERVER_IP="172.16.0.112"
+                        env.SERVER_IP = "172.16.0.112"
 
                     }
 
                 }
 
             }
-
         }
 
-        /**********************************************
-         * Deploy
-         **********************************************/
+        /*************************************************
+         * STAGE: Deploy
+         * Connect to the target server using SSH,
+         * pull the latest Docker image,
+         * stop/remove the old container,
+         * and start the new container.
+         *************************************************/
         stage('Deploy') {
 
             steps {
 
-                sshagent(credentials: [SSH_CREDENTIALS]) {
+                sshagent(credentials: [env.SSH_CREDENTIALS]) {
 
                     sh """
-
-                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
+                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} << EOF
 
                     docker pull ${IMAGE}
 
@@ -244,115 +163,68 @@ pipeline {
 
                     docker rm ${APP_NAME} || true
 
-                    docker run -d \
-                    --name ${APP_NAME} \
-                    --restart always \
-                    -p 3000:3000 \
-                    ${IMAGE}
+                    docker run -d \\
+                        --name ${APP_NAME} \\
+                        --restart always \\
+                        -p 80:80 \\
+                        ${IMAGE}
 
-                    '
-
+                    EOF
                     """
 
                 }
 
             }
-
         }
 
-        /**********************************************
-         * Health Check
-         **********************************************/
+        /*************************************************
+         * STAGE: Health Check
+         * Wait for the application to start and
+         * verify that the website is reachable.
+         *************************************************/
         stage('Health Check') {
 
             steps {
 
                 sh """
+                    sleep 10
 
-                sleep 20
-
-                curl --fail http://${SERVER_IP}:3000/health
-
+                    curl --fail http://${SERVER_IP}
                 """
 
             }
-
         }
 
     }
 
     /*****************************************************
-     * POST
+     * POST ACTIONS
+     * Actions executed after the pipeline finishes.
      *****************************************************/
-
     post {
 
+        /***********************************************
+         * Executed when the pipeline succeeds.
+         ***********************************************/
         success {
 
-            emailext(
-
-                subject: "SUCCESS : ${JOB_NAME} #${BUILD_NUMBER}",
-
-                body: """
-
-Application : ${APP_NAME}
-
-Branch : ${params.BRANCH}
-
-Server : ${SERVER_IP}
-
-Image : ${IMAGE}
-
-Deployment Successful.
-
-""",
-
-                to: "admin@company.com"
-
-            )
+            echo "Deployment Successful"
 
         }
 
+        /***********************************************
+         * Executed when the pipeline fails.
+         ***********************************************/
         failure {
 
-            sshagent(credentials: [SSH_CREDENTIALS]) {
-
-                sh """
-
-                ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
-
-                docker rollback ${APP_NAME} || true
-
-                '
-
-                """
-
-            }
-
-            emailext(
-
-                subject: "FAILED : ${JOB_NAME} #${BUILD_NUMBER}",
-
-                body: """
-
-Deployment Failed.
-
-Branch : ${params.BRANCH}
-
-Server : ${SERVER_IP}
-
-Rollback Attempted.
-
-Please check Jenkins Console Logs.
-
-""",
-
-                to: "admin@company.com"
-
-            )
+            echo "Deployment Failed"
 
         }
 
+        /***********************************************
+         * Always executed regardless of success/failure.
+         * Cleans the Jenkins workspace.
+         ***********************************************/
         always {
 
             cleanWs()
