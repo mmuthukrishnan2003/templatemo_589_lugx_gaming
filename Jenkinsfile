@@ -1,41 +1,27 @@
 pipeline {
 
-    /****************************************************************
-     * AGENT
-     * Run pipeline on any available Jenkins Agent
-     ****************************************************************/
     agent any
 
-
-    /****************************************************************
-     * PIPELINE OPTIONS
-     ****************************************************************/
+    /************************************************************
+     * OPTIONS
+     ************************************************************/
     options {
-
-        // Do not checkout automatically
         skipDefaultCheckout(true)
-
-        // Show timestamps in console
         timestamps()
-
-        // Keep only last 10 builds
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
-
-    /****************************************************************
-     * BUILD PARAMETERS
-     ****************************************************************/
+    /************************************************************
+     * PARAMETERS
+     ************************************************************/
     parameters {
 
-        // Git Branch
         choice(
             name: 'BRANCH',
             choices: ['main', 'dev', 'preprod'],
             description: 'Select Git Branch'
         )
 
-        // Deployment Server
         choice(
             name: 'SERVER',
             choices: ['SERVER-1', 'SERVER-2'],
@@ -43,59 +29,43 @@ pipeline {
         )
     }
 
-
-    /****************************************************************
-     * ENVIRONMENT VARIABLES
-     ****************************************************************/
+    /************************************************************
+     * ENVIRONMENT
+     ************************************************************/
     environment {
 
-        // Application Name
         APP_NAME = "templatemo_589_lugx_gaming"
 
-        // Docker Image Name
         IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
-        // Docker Image with Build Number
         IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
-        // GitHub Repository
         GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
-        // Jenkins Credentials
         GIT_CREDENTIALS = "github-credentials"
-        DOCKER_CREDENTIALS = "dockerhub-credentials"
-        SSH_CREDENTIALS = "deployment-ssh"
 
-        // SSH User
+        DOCKER_CREDENTIALS = "dockerhub-credentials"
+
         SERVER_USER = "demo"
 
-        // Docker Port Mapping
         HOST_PORT = "3111"
+
         CONTAINER_PORT = "80"
     }
 
-
-    /****************************************************************
-     * PIPELINE STAGES
-     ****************************************************************/
     stages {
 
         /************************************************************
-         * CLEAN WORKSPACE
+         * CLEAN
          ************************************************************/
         stage('Clean Workspace') {
-
             steps {
-
-                echo "Cleaning Workspace..."
-
                 cleanWs()
             }
         }
 
-
         /************************************************************
-         * SELECT DEPLOYMENT SERVER
+         * SELECT SERVER
          ************************************************************/
         stage('Select Deployment Server') {
 
@@ -106,37 +76,36 @@ pipeline {
                     if (params.SERVER == "SERVER-1") {
 
                         env.SERVER_IP = "172.16.0.111"
+                        env.SSH_CREDENTIAL = "deployment-server1"
 
-                    } else if (params.SERVER == "SERVER-2") {
+                    } else {
 
                         env.SERVER_IP = "172.16.0.112"
+                        env.SSH_CREDENTIAL = "deployment-server2"
 
                     }
 
                     echo """
-
-========================================
+==================================================
 
 Selected Server : ${params.SERVER}
 
 Server IP       : ${env.SERVER_IP}
 
-========================================
+SSH Credential  : ${env.SSH_CREDENTIAL}
 
+==================================================
 """
                 }
             }
         }
 
-
         /************************************************************
-         * CHECKOUT SOURCE CODE
+         * CHECKOUT
          ************************************************************/
         stage('Checkout') {
 
             steps {
-
-                echo "Checking out branch : ${params.BRANCH}"
 
                 git(
                     branch: params.BRANCH,
@@ -146,29 +115,22 @@ Server IP       : ${env.SERVER_IP}
             }
         }
 
-
         /************************************************************
-         * BUILD DOCKER IMAGE
+         * BUILD IMAGE
          ************************************************************/
         stage('Docker Build') {
 
             steps {
 
-                echo "Building Docker Image..."
-
                 sh """
-
-                docker build -t ${IMAGE} .
-
-                docker images | grep ${IMAGE_NAME}
-
+                    docker build -t ${IMAGE} .
+                    docker images | grep ${IMAGE_NAME}
                 """
             }
         }
 
-
         /************************************************************
-         * PUSH IMAGE TO DOCKER HUB
+         * PUSH IMAGE
          ************************************************************/
         stage('Docker Push') {
 
@@ -184,56 +146,81 @@ Server IP       : ${env.SERVER_IP}
 
                     sh """
 
-                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
 
-                    docker push ${IMAGE}
+                        docker push ${IMAGE}
 
-                    docker logout
+                        docker logout
 
                     """
                 }
             }
         }
 
+        /************************************************************
+         * TEST SSH CONNECTION
+         ************************************************************/
+        stage('Test SSH') {
+
+            steps {
+
+                sshagent([env.SSH_CREDENTIAL]) {
+
+                    sh """
+
+                    ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} "
+
+                        echo 'Connected Successfully'
+
+                        whoami
+
+                        hostname
+
+                        docker ps
+
+                    "
+
+                    """
+                }
+            }
+        }
 
         /************************************************************
-         * DEPLOY APPLICATION
+         * DEPLOY
          ************************************************************/
         stage('Deploy') {
 
             steps {
 
-                sshagent([env.SSH_CREDENTIALS]) {
+                sshagent([env.SSH_CREDENTIAL]) {
 
                     sh """
 
 ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} <<EOF
 
-echo "===================================="
-echo "Connected Successfully"
-echo "===================================="
+echo "Pull Image"
 
-echo "Pull Latest Image"
 docker pull ${IMAGE}
 
-echo "Stop Old Container"
+echo "Stop Container"
+
 docker stop ${APP_NAME} || true
 
-echo "Remove Old Container"
+echo "Remove Container"
+
 docker rm ${APP_NAME} || true
 
-echo "Run New Container"
+echo "Start New Container"
 
 docker run -d \\
-    --name ${APP_NAME} \\
-    --restart unless-stopped \\
-    -p ${HOST_PORT}:${CONTAINER_PORT} \\
-    ${IMAGE}
+--name ${APP_NAME} \\
+--restart unless-stopped \\
+-p ${HOST_PORT}:${CONTAINER_PORT} \\
+${IMAGE}
 
 echo "Running Containers"
-docker ps
 
-echo "Deployment Completed"
+docker ps
 
 EOF
 
@@ -242,7 +229,6 @@ EOF
             }
         }
 
-
         /************************************************************
          * HEALTH CHECK
          ************************************************************/
@@ -250,23 +236,20 @@ EOF
 
             steps {
 
-                echo "Waiting for application..."
-
                 sh """
 
-                sleep 10
+                    sleep 10
 
-                curl -I http://${SERVER_IP}:${HOST_PORT}
+                    curl -I http://${SERVER_IP}:${HOST_PORT}
 
                 """
             }
         }
     }
 
-
-    /****************************************************************
-     * POST BUILD ACTIONS
-     ****************************************************************/
+    /************************************************************
+     * POST
+     ************************************************************/
     post {
 
         success {
@@ -293,8 +276,6 @@ http://${SERVER_IP}:${HOST_PORT}
 ==================================================
 
 DEPLOYMENT FAILED
-
-Check Jenkins Console Output
 
 ==================================================
 
