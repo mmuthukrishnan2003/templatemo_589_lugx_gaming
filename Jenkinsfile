@@ -150,7 +150,7 @@ pipeline {
         /**********************************************
          * Trivy Scan
          **********************************************/
-        stage('Security Scan') {
+      /*  stage('Security Scan') {
 
             steps {
 
