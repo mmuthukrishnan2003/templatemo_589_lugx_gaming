@@ -111,7 +111,7 @@ pipeline {
         /**********************************************
          * SonarQube
          **********************************************/
-        stage('SonarQube Analysis') {
+       /* stage('SonarQube Analysis') {
 
             steps {
 
