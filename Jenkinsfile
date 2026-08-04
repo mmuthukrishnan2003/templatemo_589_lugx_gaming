@@ -1,606 +1,258 @@
 pipeline {
 
-
-    /***************************************************************
+    /****************************************************************
      * AGENT
-     * Jenkins executes pipeline on available agent
-     ***************************************************************/
+     * Run this pipeline on any available Jenkins agent
+     ****************************************************************/
     agent any
 
 
-
-    /***************************************************************
-     * OPTIONS
-     ***************************************************************/
+    /****************************************************************
+     * PIPELINE OPTIONS
+     ****************************************************************/
     options {
 
-        // Disable default Jenkins checkout
+        // Skip automatic checkout
         skipDefaultCheckout(true)
 
-
-        // Show timestamps in console logs
+        // Add timestamps to console output
         timestamps()
 
-
         // Keep only last 10 builds
-        buildDiscarder(
-            logRotator(
-                numToKeepStr: '10'
-            )
-        )
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
 
-
-
-    /***************************************************************
-     * PARAMETERS
-     ***************************************************************/
+    /****************************************************************
+     * BUILD PARAMETERS
+     ****************************************************************/
     parameters {
-
-
-        // Select Git branch during build
 
         choice(
             name: 'BRANCH',
-            choices: [
-                'main',
-                'dev',
-                'preprod'
-            ],
+            choices: ['main', 'dev', 'preprod'],
             description: 'Select Git Branch'
         )
-
-
-
-        // Select deployment server
-
-        choice(
-            name: 'DEPLOY_SERVER',
-            choices: [
-                'SERVER1',
-                'SERVER2'
-            ],
-            description: 'Select Deployment Server'
-        )
-
     }
 
 
-
-
-
-
-    /***************************************************************
+    /****************************************************************
      * ENVIRONMENT VARIABLES
-     ***************************************************************/
+     ****************************************************************/
     environment {
 
-
-        // Application name
-
+        // Application Name
         APP_NAME = "templatemo_589_lugx_gaming"
 
+        // Docker Image Name
+        IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
+        // Docker Image Tag
+        IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
-        // Docker Hub image repository
+        // GitHub Repository
+        GIT_URL = "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
 
-        IMAGE_NAME =
-        "mk2526/templatemo_589_lugx_gaming"
+        // Jenkins Credentials
+        GIT_CREDENTIALS = "github-credentials"
+        DOCKER_CREDENTIALS = "dockerhub-credentials"
+        SSH_CREDENTIALS = "deployment-ssh"
 
+        // Deployment Server
+        SERVER_IP = "172.16.0.111"
+        SERVER_USER = "demo"
 
-
-        // Dynamic image tag
-
-        IMAGE =
-        "${IMAGE_NAME}:${BUILD_NUMBER}"
-
-
-
-        // Git repository
-
-        GIT_URL =
-        "https://github.com/mmuthukrishnan2003/templatemo_589_lugx_gaming.git"
-
-
-
-        // Jenkins credentials
-
-        GIT_CREDENTIALS =
-        "github-credentials"
-
-
-        DOCKER_CREDENTIALS =
-        "dockerhub-credentials"
-
-
-        SSH_CREDENTIALS =
-        "deployment-ssh"
-
-
-
-        // Docker ports
-
-        HOST_PORT =
-        "8080"
-
-
-        CONTAINER_PORT =
-        "80"
-
-
+        // Port Mapping
+        HOST_PORT = "3111"
+        CONTAINER_PORT = "80"
     }
 
 
-
-
-
-
-    /***************************************************************
-     * STAGES
-     ***************************************************************/
     stages {
 
-
-
-        /***********************************************************
+        /************************************************************
          * CLEAN WORKSPACE
-         ***********************************************************/
+         ************************************************************/
         stage('Clean Workspace') {
-
 
             steps {
 
+                echo "Cleaning Workspace..."
 
                 cleanWs()
-
-
             }
-
         }
 
 
-
-
-
-        /***********************************************************
-         * CHECKOUT CODE
-         ***********************************************************/
+        /************************************************************
+         * CHECKOUT SOURCE CODE
+         ************************************************************/
         stage('Checkout') {
 
-
             steps {
-
 
                 echo "Checkout Branch : ${params.BRANCH}"
 
-
-
                 git(
-
                     branch: params.BRANCH,
-
                     credentialsId: env.GIT_CREDENTIALS,
-
                     url: env.GIT_URL
-
                 )
-
             }
-
         }
 
 
-
-
-
-
-        /***********************************************************
+        /************************************************************
          * BUILD DOCKER IMAGE
-         ***********************************************************/
+         ************************************************************/
         stage('Docker Build') {
 
-
             steps {
 
-
-                echo "Building Image : ${IMAGE}"
-
-
+                echo "Building Docker Image : ${IMAGE}"
 
                 sh """
+                    docker build -t ${IMAGE} .
 
-
-                docker build \\
-                -t ${IMAGE} .
-
-
-
-                docker images | grep ${IMAGE_NAME}
-
-
-
+                    docker images | grep ${IMAGE_NAME}
                 """
-
             }
-
         }
 
 
-
-
-
-
-        /***********************************************************
+        /************************************************************
          * PUSH IMAGE TO DOCKER HUB
-         ***********************************************************/
+         ************************************************************/
         stage('Docker Push') {
 
-
             steps {
-
-
 
                 withCredentials([
-
-
                     usernamePassword(
-
-                        credentialsId:
-                        env.DOCKER_CREDENTIALS,
-
-
-                        usernameVariable:
-                        'DOCKER_USER',
-
-
-                        passwordVariable:
-                        'DOCKER_PASS'
-
+                        credentialsId: env.DOCKER_CREDENTIALS,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
                     )
-
-
-
                 ]) {
 
-
-
                     sh """
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
 
+                        docker push ${IMAGE}
 
-                    echo \$DOCKER_PASS | docker login \\
-                    -u \$DOCKER_USER \\
-                    --password-stdin
-
-
-
-                    docker push ${IMAGE}
-
-
-
-                    docker logout
-
-
-
+                        docker logout
                     """
-
                 }
-
             }
-
         }
 
 
-
-
-
-
-
-
-        /***********************************************************
-         * SELECT SERVER
-         ***********************************************************/
-        stage('Select Deployment Server') {
-
-
-            steps {
-
-
-                script {
-
-
-
-                    if(params.DEPLOY_SERVER == "SERVER1") {
-
-
-
-                        env.SERVER_IP =
-                        "172.16.0.111"
-
-
-
-                    }
-
-
-                    else {
-
-
-
-                        env.SERVER_IP =
-                        "172.16.0.112"
-
-
-
-                    }
-
-
-
-
-                    echo """
-
-                    Deployment Server
-
-                    ${SERVER_IP}
-
-                    """
-
-                }
-
-            }
-
-        }
-
-
-
-
-
-
-
-        /***********************************************************
-         * DEPLOY CONTAINER
-         *
-         * Steps:
-         *
-         * SSH server
-         * Pull new image
-         * Stop old container
-         * Remove old container
-         * Start new container
-         ***********************************************************/
+        /************************************************************
+         * DEPLOY APPLICATION
+         ************************************************************/
         stage('Deploy') {
 
-
             steps {
-
 
                 sshagent([env.SSH_CREDENTIALS]) {
 
-
-
                     sh """
+ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} <<EOF
 
+echo "===================================="
+echo "Connected Successfully"
+echo "===================================="
 
-                    ssh -o StrictHostKeyChecking=no \\
-                    demo@${SERVER_IP} << EOF
+echo "Pull Latest Docker Image"
+docker pull ${IMAGE}
 
+echo "Stop Old Container"
+docker stop ${APP_NAME} || true
 
+echo "Remove Old Container"
+docker rm ${APP_NAME} || true
 
-                    set -e
+echo "Run New Container"
 
+docker run -d \
+    --name ${APP_NAME} \
+    --restart unless-stopped \
+    -p ${HOST_PORT}:${CONTAINER_PORT} \
+    ${IMAGE}
 
+echo "Running Containers"
+docker ps
 
-                    echo "Connected to Server"
-
-
-
-
-                    echo "Pulling Docker Image"
-
-
-
-                    docker pull ${IMAGE}
-
-
-
-
-                    echo "Stopping Old Container"
-
-
-
-                    docker stop ${APP_NAME} || true
-
-
-
-
-                    echo "Removing Old Container"
-
-
-
-                    docker rm ${APP_NAME} || true
-
-
-
-
-
-                    echo "Starting New Container"
-
-
-
-                    docker run -d \\
-
-                    --name ${APP_NAME} \\
-
-                    -p ${HOST_PORT}:${CONTAINER_PORT} \\
-
-                    --restart always \\
-
-                    ${IMAGE}
-
-
-
-
-
-
-                    echo "Removing unused images"
-
-
-
-                    docker image prune -f
-
-
-
-
-
-                    echo "Deployment Completed"
-
-
-
-                    docker ps
-
-
-
+echo "Deployment Completed"
 
 EOF
-
-
                     """
-
                 }
-
             }
-
         }
 
 
-
-
-
-
-
-        /***********************************************************
+        /************************************************************
          * HEALTH CHECK
-         ***********************************************************/
+         ************************************************************/
         stage('Health Check') {
-
 
             steps {
 
+                echo "Checking Application..."
 
                 sh """
+                    sleep 10
 
-
-                echo "Waiting Application Startup"
-
-
-
-                sleep 15
-
-
-
-
-                curl --fail \\
-                http://${SERVER_IP}:${HOST_PORT}
-
-
-
-
-
-                echo "Application Healthy"
-
-
-
+                    curl -I http://${SERVER_IP}:${HOST_PORT}
                 """
-
             }
-
         }
-
-
-
     }
 
 
-
-
-
-
-
-    /***************************************************************
-     * POST ACTIONS
-     ***************************************************************/
+    /****************************************************************
+     * POST BUILD ACTIONS
+     ****************************************************************/
     post {
-
-
 
         success {
 
-
             echo """
 
-            ==================================
+=================================================
 
-            DEPLOYMENT SUCCESSFUL
+DEPLOYMENT SUCCESSFUL
 
+Application URL
 
-            Application:
-            ${APP_NAME}
+http://${SERVER_IP}:${HOST_PORT}
 
+=================================================
 
-            Image:
-            ${IMAGE}
-
-
-            Branch:
-            ${BRANCH}
-
-
-            Server:
-            ${SERVER_IP}
-
-
-            ==================================
-
-            """
-
+"""
         }
-
-
-
 
 
         failure {
 
-
             echo """
 
-            ==================================
+=================================================
 
-            DEPLOYMENT FAILED
+DEPLOYMENT FAILED
 
+Check Jenkins Console Output
 
-            Check Jenkins Console Output
+=================================================
 
-
-            ==================================
-
-            """
-
+"""
         }
-
-
-
 
 
         always {
 
-
             cleanWs()
-
-
         }
-
-
     }
-
-
 }
