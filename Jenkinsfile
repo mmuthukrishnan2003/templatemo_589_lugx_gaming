@@ -35,7 +35,7 @@ pipeline {
 
         APP_NAME = "bingo"
 
-        IMAGE = "harbor.company.com/apps/bingo:${BUILD_NUMBER}"
+        IMAGE = "docker build -t mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER} ."
 
         REGISTRY = "harbor.company.com"
 
@@ -190,13 +190,10 @@ pipeline {
                         passwordVariable: 'PASS'
                 )]) {
 
-                    sh """
-                    echo \$PASS | docker login ${REGISTRY} -u \$USER --password-stdin
-
-                    docker push ${IMAGE}
-
-                    docker logout ${REGISTRY}
-                    """
+                    sh '''
+    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+    docker push mk2526/templatemo_589_lugx_gaming:${BUILD_NUMBER}
+    '''
 
                 }
 
