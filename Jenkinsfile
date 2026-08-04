@@ -137,33 +137,24 @@ pipeline {
          *
          * Push Docker Image to Docker Hub
          ***********************************************************/
-stage('Docker Push') {
-
-    steps {
-
-        withCredentials([
-            usernamePassword(
-                credentialsId: "${DOCKER_CREDENTIALS}",
-                usernameVariable: 'DOCKER_USER',
-                passwordVariable: 'DOCKER_PASS'
-            )
-        ]) {
-
-            sh '''
-            
-            echo $DOCKER_PASS | docker login \
-            -u $DOCKER_USER \
-            --password-stdin
-
-            docker push ${IMAGE}
-
-            docker logout
-
-            '''
-
+        stage('Docker Push') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: env.DOCKER_CREDENTIALS,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh """
+                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                    docker push ${IMAGE}
+                    docker logout
+                    """
+                }
+            }
         }
-    }
-}
+
 
         /***********************************************************
          * STAGE 4
@@ -203,58 +194,31 @@ stage('Docker Push') {
          * 4. Remove old container
          * 5. Start new container
          ***********************************************************/
-        /***********************************************************
- * 6. DEPLOY APPLICATION
- ***********************************************************/
-stage('Deploy') {
-
-    steps {
-
-        sshagent(['deployment-ssh']) {
-
-            sh """
-
-            ssh -o StrictHostKeyChecking=no demo@172.16.0.111 << EOF
-
-
-            echo "Pulling latest image"
-
-            docker pull ${IMAGE}
-
-
-            echo "Stopping old container"
-
-            docker stop ${APP_NAME} || true
-
-
-            echo "Removing old container"
-
-            docker rm ${APP_NAME} || true
-
-
-
-            echo "Starting new container"
-
-
-            docker run -d \
-            --name ${APP_NAME} \
-            -p ${HOST_PORT}:${CONTAINER_PORT} \
-            ${IMAGE}
-
-
-
-            echo "Deployment completed"
-
-
-            EOF
-
-            """
-
+        stage('Deploy') {
+            steps {
+                sshagent([env.SSH_CREDENTIALS]) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} "
+                    echo 'Connected'
+                    echo 'Pulling Image'
+                    docker pull ${IMAGE}
+                    echo 'Stopping Old Container'
+                    docker stop ${APP_NAME} || true
+                    echo 'Removing Old Container'
+                    docker rm ${APP_NAME} || true
+                    echo 'Starting New Container'
+                    docker run -d --name ${APP_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} --restart always ${IMAGE}
+                    echo 'Cleaning Old Docker Images'
+                    docker image prune -f
+                    echo 'Deployment Completed'
+                    docker ps
+                    "
+                    """
+                }
+            }
         }
 
-    }
 
-}
         /***********************************************************
          * STAGE 6
          *
