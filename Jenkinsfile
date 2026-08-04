@@ -194,29 +194,78 @@ pipeline {
          * 4. Remove old container
          * 5. Start new container
          ***********************************************************/
-        stage('Deploy') {
-            steps {
-                sshagent([env.SSH_CREDENTIALS]) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} "
-                    echo 'Connected'
-                    echo 'Pulling Image'
-                    docker pull ${IMAGE}
-                    echo 'Stopping Old Container'
-                    docker stop ${APP_NAME} || true
-                    echo 'Removing Old Container'
-                    docker rm ${APP_NAME} || true
-                    echo 'Starting New Container'
-                    docker run -d --name ${APP_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} --restart always ${IMAGE}
-                    echo 'Cleaning Old Docker Images'
-                    docker image prune -f
-                    echo 'Deployment Completed'
-                    docker ps
-                    "
-                    """
-                }
-            }
+        /***********************************************************
+ * 6. DEPLOY APPLICATION
+ ***********************************************************/
+stage('Deploy') {
+
+    steps {
+
+        sshagent([env.SSH_CREDENTIALS]) {
+
+
+            sh """
+
+ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
+
+set -e
+
+
+echo "Connected to Deployment Server"
+
+
+echo "Docker Login"
+
+docker login \
+-u mk2526 \
+-p ${DOCKER_PASS}
+
+
+
+echo "Pulling Image"
+
+docker pull ${IMAGE}
+
+
+
+echo "Stopping Existing Container"
+
+docker stop ${APP_NAME} || true
+
+
+
+echo "Removing Existing Container"
+
+docker rm ${APP_NAME} || true
+
+
+
+echo "Starting New Container"
+
+
+docker run -d \\
+--name ${APP_NAME} \\
+-p ${HOST_PORT}:${CONTAINER_PORT} \\
+--restart always \\
+${IMAGE}
+
+
+
+echo "Container Started"
+
+
+docker ps
+
+
+'
+
+"""
+
         }
+
+    }
+
+}
 
 
         /***********************************************************
