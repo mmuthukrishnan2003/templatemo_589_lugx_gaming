@@ -67,39 +67,38 @@ pipeline {
         /************************************************************
          * SELECT SERVER
          ************************************************************/
-        stage('Select Deployment Server') {
+stage('Select Deployment Server') {
 
-            steps {
+    steps {
 
-                script {
+        script {
 
-                    if (params.SERVER == "SERVER-1") {
+            switch(params.SERVER) {
 
-                        env.SERVER_IP = "172.16.0.111"
-                        env.SSH_CREDENTIAL = "deployment-server1"
+                case "SERVER-1":
+                    env.SERVER_IP = "172.16.0.111"
+                    env.SSH_CREDENTIAL = "deployment-ssh-1"
+                    break
 
-                    } else {
+                case "SERVER-2":
+                    env.SERVER_IP = "172.16.0.112"
+                    env.SSH_CREDENTIAL = "deployment-ssh-2"
+                    break
 
-                        env.SERVER_IP = "172.16.0.112"
-                        env.SSH_CREDENTIAL = "deployment-server2"
-
-                    }
-
-                    echo """
-==================================================
-
-Selected Server : ${params.SERVER}
-
-Server IP       : ${env.SERVER_IP}
-
-SSH Credential  : ${env.SSH_CREDENTIAL}
-
-==================================================
-"""
-                }
+                default:
+                    error("Invalid server selected.")
             }
-        }
 
+            echo """
+========================================
+Selected Server : ${params.SERVER}
+Server IP       : ${env.SERVER_IP}
+SSH Credential  : ${env.SSH_CREDENTIAL}
+========================================
+"""
+        }
+    }
+}
         /************************************************************
          * CHECKOUT
          ************************************************************/
