@@ -148,7 +148,7 @@ pipeline {
 
             steps {
 
-                sshagent(credentials: [env.SSH_CREDENTIALS]) {
+                sshagent(credentials: ['deployments-ssh']) {
 
                     sh """
                     ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
