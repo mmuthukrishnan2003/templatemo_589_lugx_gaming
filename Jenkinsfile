@@ -137,24 +137,33 @@ pipeline {
          *
          * Push Docker Image to Docker Hub
          ***********************************************************/
-        stage('Docker Push') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: env.DOCKER_CREDENTIALS,
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    sh """
-                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                    docker push ${IMAGE}
-                    docker logout
-                    """
-                }
-            }
-        }
+stage('Docker Push') {
 
+    steps {
+
+        withCredentials([
+            usernamePassword(
+                credentialsId: "${DOCKER_CREDENTIALS}",
+                usernameVariable: 'DOCKER_USER',
+                passwordVariable: 'DOCKER_PASS'
+            )
+        ]) {
+
+            sh '''
+            
+            echo $DOCKER_PASS | docker login \
+            -u $DOCKER_USER \
+            --password-stdin
+
+            docker push ${IMAGE}
+
+            docker logout
+
+            '''
+
+        }
+    }
+}
 
         /***********************************************************
          * STAGE 4
