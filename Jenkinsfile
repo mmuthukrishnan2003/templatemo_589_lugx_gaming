@@ -14,15 +14,15 @@ pipeline {
      ***************************************************************/
     options {
 
-        // Disable automatic checkout
+        // Disable automatic Jenkins checkout
         skipDefaultCheckout(true)
 
 
-        // Add timestamps
+        // Add timestamps to logs
         timestamps()
 
 
-        // Keep only last 10 builds
+        // Keep last 10 builds only
         buildDiscarder(
             logRotator(
                 numToKeepStr: '10'
@@ -32,13 +32,14 @@ pipeline {
 
 
 
+
     /***************************************************************
-     * BUILD PARAMETERS
+     * PARAMETERS
      ***************************************************************/
     parameters {
 
 
-        // Select Git branch
+        // Git branch selection
         choice(
             name: 'BRANCH',
             choices: [
@@ -46,12 +47,11 @@ pipeline {
                 'dev',
                 'preprod'
             ],
-            description: 'Select Branch'
+            description: 'Select Git Branch'
         )
 
 
-
-        // Select deployment server
+        // Deployment server selection
         choice(
             name: 'DEPLOY_SERVER',
             choices: [
@@ -66,28 +66,24 @@ pipeline {
 
 
 
-
     /***************************************************************
      * ENVIRONMENT VARIABLES
      ***************************************************************/
     environment {
 
 
-        // Docker container name
-        APP_NAME =
-        "templatemo_589_lugx_gaming"
+        // Application container name
+        APP_NAME = "templatemo_589_lugx_gaming"
 
 
 
-        // Docker Hub image
-        IMAGE_NAME =
-        "mk2526/templatemo_589_lugx_gaming"
+        // Docker Hub image name
+        IMAGE_NAME = "mk2526/templatemo_589_lugx_gaming"
 
 
 
-        // Image tag based on Jenkins build number
-        IMAGE =
-        "${IMAGE_NAME}:${BUILD_NUMBER}"
+        // Docker image tag
+        IMAGE = "${IMAGE_NAME}:${BUILD_NUMBER}"
 
 
 
@@ -116,13 +112,9 @@ pipeline {
 
         // Application ports
 
-        HOST_PORT =
-        "80"
+        HOST_PORT = "80"
 
-
-
-        CONTAINER_PORT =
-        "80"
+        CONTAINER_PORT = "80"
 
     }
 
@@ -142,24 +134,15 @@ pipeline {
          ***********************************************************/
         stage('Checkout') {
 
-
             steps {
-
 
                 echo "Checking branch ${params.BRANCH}"
 
 
-
                 git(
-
                     branch: params.BRANCH,
-
-                    credentialsId:
-                    env.GIT_CREDENTIALS,
-
-                    url:
-                    env.GIT_URL
-
+                    credentialsId: env.GIT_CREDENTIALS,
+                    url: env.GIT_URL
                 )
 
             }
@@ -175,16 +158,14 @@ pipeline {
          ***********************************************************/
         stage('Docker Build') {
 
-
             steps {
-
 
                 sh """
 
                 echo "Building Docker Image"
 
-                docker build \
-                -t ${IMAGE} .
+
+                docker build -t ${IMAGE} .
 
 
                 echo "Docker Image Created"
@@ -207,44 +188,28 @@ pipeline {
          ***********************************************************/
         stage('Docker Push') {
 
-
             steps {
 
 
                 withCredentials([
 
-
                     usernamePassword(
-
-                        credentialsId:
-                        env.DOCKER_CREDENTIALS,
-
-
-                        usernameVariable:
-                        'DOCKER_USER',
-
-
-                        passwordVariable:
-                        'DOCKER_PASS'
-
+                        credentialsId: env.DOCKER_CREDENTIALS,
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
                     )
 
                 ]) {
 
 
-
                     sh """
 
-                    echo \$DOCKER_PASS |
-
-                    docker login \
+                    echo \$DOCKER_PASS | docker login \
                     -u \$DOCKER_USER \
                     --password-stdin
 
 
-
                     docker push ${IMAGE}
-
 
 
                     docker logout
@@ -263,7 +228,7 @@ pipeline {
 
 
         /***********************************************************
-         * 4. SELECT SERVER
+         * 4. SERVER SELECTION
          ***********************************************************/
         stage('Server Selection') {
 
@@ -274,7 +239,6 @@ pipeline {
                 script {
 
 
-
                     if(params.DEPLOY_SERVER == "SERVER1") {
 
 
@@ -283,7 +247,6 @@ pipeline {
 
 
                     }
-
                     else {
 
 
@@ -297,7 +260,7 @@ pipeline {
 
                     echo """
 
-                    Selected Deployment Server:
+                    Deployment Server:
 
                     ${SERVER_IP}
 
@@ -314,11 +277,8 @@ pipeline {
 
 
 
-
         /***********************************************************
          * 5. SSH CONNECTION TEST
-         *
-         * Verify Jenkins can connect to server
          ***********************************************************/
         stage('SSH Test') {
 
@@ -326,40 +286,28 @@ pipeline {
             steps {
 
 
-
                 sshagent([env.SSH_CREDENTIALS]) {
 
 
                     sh """
 
-                    echo "Testing SSH Connection"
-
-
-
                     ssh \
                     -o StrictHostKeyChecking=no \
-                    demo@${SERVER_IP} "
+                    demo@${SERVER_IP} '
 
-
-                    echo User:
-
+                    echo "User:"
                     whoami
 
 
-
-                    echo Host:
-
+                    echo "Hostname:"
                     hostname
 
 
-
-                    echo Docker:
-
+                    echo "Docker Status:"
                     docker ps
 
 
-                    "
-
+                    '
 
                     """
 
@@ -387,41 +335,30 @@ pipeline {
                 sshagent([env.SSH_CREDENTIALS]) {
 
 
-
                     sh """
-
 
                     ssh \
                     -o StrictHostKeyChecking=no \
-                    demo@${SERVER_IP} << EOF
-
+                    demo@${SERVER_IP} '
 
 
                     echo "Connected"
 
 
-
-                    echo "Pulling Image"
-
+                    echo "Pulling Docker Image"
 
                     docker pull ${IMAGE}
 
 
 
-
-
-                    echo "Stopping Old Container"
-
+                    echo "Stopping Existing Container"
 
 
                     docker stop ${APP_NAME} || true
 
 
 
-
-
-                    echo "Removing Old Container"
-
+                    echo "Removing Existing Container"
 
 
                     docker rm ${APP_NAME} || true
@@ -429,37 +366,25 @@ pipeline {
 
 
 
-
-
                     echo "Starting New Container"
 
 
-
-                    docker run -d \\
-
-                    --name ${APP_NAME} \\
-
-                    -p ${HOST_PORT}:${CONTAINER_PORT} \\
-
-                    --restart always \\
-
+                    docker run -d \
+                    --name ${APP_NAME} \
+                    -p ${HOST_PORT}:${CONTAINER_PORT} \
+                    --restart always \
                     ${IMAGE}
-
-
 
 
 
                     echo "Deployment Completed"
 
 
-
                     docker ps
 
 
 
-EOF
-
-
+                    '
 
                     """
 
@@ -468,7 +393,6 @@ EOF
             }
 
         }
-
 
 
 
@@ -485,32 +409,40 @@ EOF
             steps {
 
 
-                sh """
+                sshagent([env.SSH_CREDENTIALS]) {
 
 
-                echo "Waiting Application"
+                    sh """
+
+                    ssh \
+                    -o StrictHostKeyChecking=no \
+                    demo@${SERVER_IP} '
 
 
-
-                sleep 15
-
+                    echo "Waiting Application"
 
 
-                curl --fail \
-                http://${SERVER_IP}:${HOST_PORT}
-
-
-
-                echo "Application Healthy"
+                    sleep 15
 
 
 
-                """
+                    curl --fail http://localhost:${HOST_PORT}
+
+
+
+                    echo "Application Healthy"
+
+
+
+                    '
+
+                    """
+
+                }
 
             }
 
         }
-
 
 
     }
@@ -544,7 +476,7 @@ EOF
 
 
             Branch:
-            ${BRANCH}
+            ${params.BRANCH}
 
 
             Server:
@@ -556,8 +488,6 @@ EOF
             """
 
         }
-
-
 
 
 
@@ -579,8 +509,6 @@ EOF
             """
 
         }
-
-
 
 
 
