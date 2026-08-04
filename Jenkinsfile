@@ -210,73 +210,51 @@ stage('Deploy') {
 
     steps {
 
-        sshagent([env.SSH_CREDENTIALS]) {
-
+        sshagent(['deployment-ssh']) {
 
             sh """
 
-ssh -o StrictHostKeyChecking=no demo@${SERVER_IP} '
-
-set -e
+            ssh -o StrictHostKeyChecking=no demo@172.16.0.111 << EOF
 
 
-echo "Connected to Deployment Server"
+            echo "Pulling latest image"
+
+            docker pull ${IMAGE}
 
 
-echo "Docker Login"
+            echo "Stopping old container"
 
-docker login \
--u mk2526 \
--p ${DOCKER_PASS}
+            docker stop ${APP_NAME} || true
 
 
+            echo "Removing old container"
 
-echo "Pulling Image"
-
-docker pull ${IMAGE}
+            docker rm ${APP_NAME} || true
 
 
 
-echo "Stopping Existing Container"
-
-docker stop ${APP_NAME} || true
+            echo "Starting new container"
 
 
-
-echo "Removing Existing Container"
-
-docker rm ${APP_NAME} || true
+            docker run -d \
+            --name ${APP_NAME} \
+            -p ${HOST_PORT}:${CONTAINER_PORT} \
+            ${IMAGE}
 
 
 
-echo "Starting New Container"
+            echo "Deployment completed"
 
 
-docker run -d \\
---name ${APP_NAME} \\
--p ${HOST_PORT}:${CONTAINER_PORT} \\
---restart always \\
-${IMAGE}
+            EOF
 
-
-
-echo "Container Started"
-
-
-docker ps
-
-
-'
-
-"""
+            """
 
         }
 
     }
 
 }
-
-
         /***********************************************************
          * STAGE 6
          *
